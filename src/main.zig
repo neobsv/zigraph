@@ -138,18 +138,18 @@ pub fn Graph(comptime T: type) type {
         }
 
         fn topoDriver(self: *Self, node: []const u8) !bool {
-            // In the process of visiting this vertex, we reach the same vertex again. 
+            // In the process of visiting this vertex, we reach the same vertex again.
             // Return to stop the process. (#cond1)
             if (self.visited.?.getValue(node).? == 1) {
                 return false;
             } 
 
-            // Finished visiting this vertex, it is now marked black. (#cond2)
+            // Finished visiting this vertex, it is now marked 2. (#cond2)
             if (self.visited.?.getValue(node).? == 2) {
                 return true;
             }
 
-            // Color the node grey, indicating that it is being processed, and initiate a loop
+            // Color the node 1, indicating that it is being processed, and initiate a loop
             // to visit all its neighbors. If we reach the same vertex again, return (#cond1)
             _ = try self.visited.?.put(node, 1);
             
@@ -165,7 +165,7 @@ pub fn Graph(comptime T: type) type {
                 }
             }
 
-            // Finish processing the current node and mark it black.
+            // Finish processing the current node and mark it 2.
             _ = try self.visited.?.put(node, 2);
             
             // Add node to stack of visited nodes.
@@ -185,7 +185,7 @@ pub fn Graph(comptime T: type) type {
 
             var result = std.ArrayList(*Node).init(self.allocator);
 
-            // Initially, color all the nodes white, to mark them unvisited.
+            // Initially, color all the nodes 0, to mark them unvisited.
             for (self.vertices.?.entries) |entry| {
                 if (entry.used == true) {
                     _ = try self.visited.?.put(entry.kv.key, 0);
@@ -212,31 +212,61 @@ pub fn Graph(comptime T: type) type {
             return result;
         }
 
-        pub fn sccFind(self: *Self){
+        // pub fn sccFind(self: *Self){
 
-        }
+        // }
 
-        pub fn dfs(self: *Self) !std.ArrayList(*Node) {
+        // pub fn dfs(self: *Self) !std.ArrayList(*Node) {
 
-        }
+        // }
 
         pub fn bfs(self: *Self) !std.ArrayList(*Node) {
-            var queue = std.ArrayList(*Node).init(self.allocator);
-            defer queue.deinit();
+            self.visited = std.StringHashMap(i32).init(self.allocator);
+            defer self.visited.?.deinit();
 
+            var result = std.ArrayList(*Node).init(self.allocator);
+
+            // Initially, color all the nodes 0, to mark them unvisited.
+            for (self.vertices.?.entries) |entry| {
+                if (entry.used == true) {
+                    _ = try self.visited.?.put(entry.kv.key, 0);
+                }
+            }
+
+            var qu = std.ArrayList(*Node).init(self.allocator);
+            defer qu.deinit();
+
+            try qu.append(self.root.?);
+
+            while (qu.capacity != 0) {
+                var current: *Node = qu.items[0];
+                qu.items = qu.items[1..];
+
+                var neighbors: std.ArrayList(*Node) = self.graph.?.getValue(current).?;
+                for (neighbors.items) |n| {
+                    // warn("\r\n nbhr: {} ", .{n});
+                    if (self.visited.?.getValue(n.name).? == 0 ) {
+                        try qu.append(n);
+                        _ = try self.visited.?.put(n.name, 1);
+                        try result.append(n);
+                    }
+                }
+            }
+            
+            return result;
         }
 
-        pub fn kruskal(self: *Self) !std.ArrayList(*Node) {
+        // pub fn kruskal(self: *Self) !std.ArrayList(*Node) {
 
-        }
+        // }
 
-        pub fn prim(self: *Self) !std.ArrayList(*Node) {
+        // pub fn prim(self: *Self) !std.ArrayList(*Node) {
 
-        }
+        // }
 
-        pub fn dijiksta(self: *Self) !std.ArrayList(*Node) {
+        // pub fn dijiksta(self: *Self) !std.ArrayList(*Node) {
 
-        }
+        // }
 
     };
 }
@@ -258,6 +288,17 @@ pub fn main() anyerror!void {
     defer res.deinit();
 
     for (res.items) |n| {
+        warn("\r\n stack: {} ", .{n});
+    }
+    warn("\r\n", .{});
+
+
+    warn("\r\n", .{});
+    warn("\r\nBFS: ", .{});
+    var res1 = try graph.bfs();
+    defer res.deinit();
+
+    for (res1.items) |n| {
         warn("\r\n stack: {} ", .{n});
     }
     warn("\r\n", .{});
