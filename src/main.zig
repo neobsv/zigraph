@@ -9,8 +9,6 @@ pub fn Graph(comptime T: type) type {
         vertices: ?std.StringHashMap(*Node),
         graph: ?std.AutoHashMap(*Node, std.ArrayList(*Node)),
         allocator: *std.mem.Allocator,
-        visited: ?std.StringHashMap(i32),
-        stack: ?std.ArrayList(*Node),
 
         const Self = @This();
 
@@ -32,8 +30,6 @@ pub fn Graph(comptime T: type) type {
                 .root = null,
                 .vertices = null,
                 .graph = null,
-                .visited = null,
-                .stack = null,
                 .allocator = alloc
             };
         }
@@ -137,28 +133,28 @@ pub fn Graph(comptime T: type) type {
             warn("\r\n", .{});
         }
 
-        fn topoDriver(self: *Self, node: []const u8) !bool {
+        fn topoDriver(self: *Self, node: []const u8, visited: *std.StringHashMap(i32), stack: *std.ArrayList(*Node)) !bool {
             // In the process of visiting this vertex, we reach the same vertex again.
             // Return to stop the process. (#cond1)
-            if (self.visited.?.getValue(node).? == 1) {
+            if (visited.getValue(node).? == 1) {
                 return false;
             } 
 
             // Finished visiting this vertex, it is now marked 2. (#cond2)
-            if (self.visited.?.getValue(node).? == 2) {
+            if (visited.getValue(node).? == 2) {
                 return true;
             }
 
             // Color the node 1, indicating that it is being processed, and initiate a loop
             // to visit all its neighbors. If we reach the same vertex again, return (#cond1)
-            _ = try self.visited.?.put(node, 1);
+            _ = try visited.put(node, 1);
             
             var nodePtr: *Node = self.vertices.?.getValue(node).?;
             var neighbors: std.ArrayList(*Node) = self.graph.?.getValue(nodePtr).?;
             for (neighbors.items) |n| {
                 // warn("\r\n nbhr: {} ", .{n});
-                if (self.visited.?.getValue(n.name).? == 0 ) {
-                    var check: bool = self.topoDriver(n.name) catch unreachable;
+                if (visited.getValue(n.name).? == 0 ) {
+                    var check: bool = self.topoDriver(n.name, visited, stack) catch unreachable;
                     if (check == false) {
                         return false;
                     }
@@ -166,10 +162,10 @@ pub fn Graph(comptime T: type) type {
             }
 
             // Finish processing the current node and mark it 2.
-            _ = try self.visited.?.put(node, 2);
+            _ = try visited.put(node, 2);
             
             // Add node to stack of visited nodes.
-            try self.stack.?.append(nodePtr);
+            try stack.append(nodePtr);
             // warn("\r\n reach {} ", .{nodePtr});
 
             return true;
@@ -177,27 +173,27 @@ pub fn Graph(comptime T: type) type {
         }
 
         pub fn topoSort(self: *Self) !std.ArrayList(*Node) {
-            self.visited = std.StringHashMap(i32).init(self.allocator);
-            defer self.visited.?.deinit();
+            var visited = std.StringHashMap(i32).init(self.allocator);
+            defer visited.deinit();
 
-            self.stack = std.ArrayList(*Node).init(self.allocator);
-            defer self.stack.?.deinit();
+            var stack = std.ArrayList(*Node).init(self.allocator);
+            defer stack.deinit();
 
             var result = std.ArrayList(*Node).init(self.allocator);
 
             // Initially, color all the nodes 0, to mark them unvisited.
             for (self.vertices.?.entries) |entry| {
                 if (entry.used == true) {
-                    _ = try self.visited.?.put(entry.kv.key, 0);
+                    _ = try visited.put(entry.kv.key, 0);
                 }
             }
 
             for (self.vertices.?.entries) |entry| {
                 if (entry.used == true) {
-                    if (self.visited.?.getValue(entry.kv.key).? == 0 ) {
-                        var check: bool = self.topoDriver(entry.kv.key) catch unreachable;
+                    if (visited.getValue(entry.kv.key).? == 0 ) {
+                        var check: bool = self.topoDriver(entry.kv.key, &visited, &stack) catch unreachable;
                         if (check == false) {
-                            for (self.stack.?.items) |n| {
+                            for (stack.items) |n| {
                                 try result.append(n);
                             }
                             return result;
@@ -206,7 +202,7 @@ pub fn Graph(comptime T: type) type {
                 }
             }
 
-            for (self.stack.?.items) |n| {
+            for (stack.items) |n| {
                 try result.append(n);
             }
             return result;
@@ -216,20 +212,51 @@ pub fn Graph(comptime T: type) type {
 
         // }
 
-        // pub fn dfs(self: *Self) !std.ArrayList(*Node) {
-
-        // }
-
-        pub fn bfs(self: *Self) !std.ArrayList(*Node) {
-            self.visited = std.StringHashMap(i32).init(self.allocator);
-            defer self.visited.?.deinit();
+        pub fn dfs(self: *Self) !std.ArrayList(*Node) {
+            var visited = std.StringHashMap(i32).init(self.allocator);
+            defer visited.deinit();
 
             var result = std.ArrayList(*Node).init(self.allocator);
 
             // Initially, color all the nodes 0, to mark them unvisited.
             for (self.vertices.?.entries) |entry| {
                 if (entry.used == true) {
-                    _ = try self.visited.?.put(entry.kv.key, 0);
+                    _ = try visited.put(entry.kv.key, 0);
+                }
+            }
+
+            var stack = std.ArrayList(*Node).init(self.allocator);
+            defer stack.deinit();
+
+            try stack.append(self.root.?);
+
+            while (stack.items.len > 0) {
+                var current: *Node = stack.pop();
+
+                var neighbors: std.ArrayList(*Node) = self.graph.?.getValue(current).?;
+                for (neighbors.items) |n| {
+                    // warn("\r\n nbhr: {} ", .{n});
+                    if (visited.getValue(n.name).? == 0 ) {
+                        try stack.append(n);
+                        _ = try visited.put(n.name, 1);
+                        try result.append(n);
+                    }
+                }
+            }
+            
+            return result;
+        }
+
+        pub fn bfs(self: *Self) !std.ArrayList(*Node) {
+            var visited = std.StringHashMap(i32).init(self.allocator);
+            defer visited.deinit();
+
+            var result = std.ArrayList(*Node).init(self.allocator);
+
+            // Initially, color all the nodes 0, to mark them unvisited.
+            for (self.vertices.?.entries) |entry| {
+                if (entry.used == true) {
+                    _ = try visited.put(entry.kv.key, 0);
                 }
             }
 
@@ -238,16 +265,15 @@ pub fn Graph(comptime T: type) type {
 
             try qu.append(self.root.?);
 
-            while (qu.capacity != 0) {
-                var current: *Node = qu.items[0];
-                qu.items = qu.items[1..];
+            while (qu.items.len > 0) {
+                var current: *Node = qu.orderedRemove(0);
 
                 var neighbors: std.ArrayList(*Node) = self.graph.?.getValue(current).?;
                 for (neighbors.items) |n| {
                     // warn("\r\n nbhr: {} ", .{n});
-                    if (self.visited.?.getValue(n.name).? == 0 ) {
+                    if (visited.getValue(n.name).? == 0 ) {
                         try qu.append(n);
-                        _ = try self.visited.?.put(n.name, 1);
+                        _ = try visited.put(n.name, 1);
                         try result.append(n);
                     }
                 }
@@ -296,10 +322,20 @@ pub fn main() anyerror!void {
     warn("\r\n", .{});
     warn("\r\nBFS: ", .{});
     var res1 = try graph.bfs();
-    defer res.deinit();
+    defer res1.deinit();
 
     for (res1.items) |n| {
-        warn("\r\n stack: {} ", .{n});
+        warn("\r\n bfs result: {} ", .{n});
+    }
+    warn("\r\n", .{});
+
+    warn("\r\n", .{});
+    warn("\r\nDFS: ", .{});
+    var res2 = try graph.dfs();
+    defer res2.deinit();
+
+    for (res2.items) |n| {
+        warn("\r\n dfs result: {} ", .{n});
     }
     warn("\r\n", .{});
     
