@@ -319,7 +319,7 @@ pub fn Graph(comptime T: type) type {
             return a.distance < b.distance;
         }
 
-        pub fn dijiksta(self: *Self, src: []const u8, dst: []const u8) !std.ArrayList(Element) {
+        pub fn dijikstra(self: *Self, src: []const u8, dst: []const u8) !std.ArrayList(Element) {
 
             var result = std.ArrayList(Element).init(self.allocator);
 
@@ -460,7 +460,7 @@ pub fn main() anyerror!void {
 
     warn("\r\n", .{});
     warn("\r\nDijikstra: ", .{});
-    var res3 = try graph2.dijiksta("A", "D");
+    var res3 = try graph2.dijikstra("A", "D");
     defer res3.deinit();
 
     for (res3.items) |n| {
