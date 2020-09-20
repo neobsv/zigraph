@@ -10,7 +10,7 @@ pub fn Graph(comptime T: type) type {
         root: ?*Node,
         vertices: ?std.StringHashMap(*Node),
         graph: ?std.AutoHashMap(*Node, std.ArrayList(*Edge)),
-        allocator: *std.mem.Allocator,
+        allocator: *mem.Allocator,
 
         const Self = @This();
 
@@ -101,7 +101,7 @@ pub fn Graph(comptime T: type) type {
         }
 
         pub fn addEdge(self: *Self, n1: []const u8, d1: T, n2: []const u8, d2: T, w: u32) !void {
-            if (self.vertices == null or self.vertices.?.contains(n1) == false ){
+            if (self.vertices == null or self.vertices.?.contains(n1) == false ) {
                 try self.addVertex(n1, d1);
             }
 
@@ -112,22 +112,15 @@ pub fn Graph(comptime T: type) type {
             var node1: *Node = self.vertices.?.getValue(n1).?;
             var node2: *Node = self.vertices.?.getValue(n2).?;
 
-            var arr1: std.ArrayList(*Edge) = self.graph.?.getValue(node1).?;
-            var arr2: std.ArrayList(*Edge) = self.graph.?.getValue(node2).?;
+            var arr: std.ArrayList(*Edge) = self.graph.?.getValue(node1).?;
             
-            var edge1 = try self.allocator.create(Edge);
-            errdefer self.allocator.destroy(edge1);
-            edge1.* = Edge.init(node1, w);
+            var edge = try self.allocator.create(Edge);
+            errdefer self.allocator.destroy(edge);
+            edge.* = Edge.init(node2, w);
 
-            var edge2 = try self.allocator.create(Edge);
-            errdefer self.allocator.destroy(edge2);
-            edge2.* = Edge.init(node2, w);
+            try arr.append(edge);
 
-            try arr1.append(edge2);
-            try arr2.append(edge1);
-
-            _ = try self.graph.?.put(node1, arr1);
-            _ = try self.graph.?.put(node2, arr2);
+            _ = try self.graph.?.put(node1, arr);
 
         }
 
@@ -419,18 +412,18 @@ pub fn Graph(comptime T: type) type {
             }
 
             var source: *Node = self.vertices.?.getValue(src).?;
-            var dest: []const u8 = "undef";
+            var dest: []const u8 = undefined;
 
             var pq = std.PriorityQueue(Element).init(self.allocator, minCompare);
             defer pq.deinit();
 
-            var visited = std.StringHashMap(i32).init(self.allocator);
+            var visited = std.StringHashMap(bool).init(self.allocator);
             defer visited.deinit();
 
             var distances = std.StringHashMap(i32).init(self.allocator);
             defer distances.deinit();
 
-            var prev = std.StringHashMap(std.ArrayList(*Node)).init(self.allocator);
+            var prev = std.StringHashMap(?std.ArrayList(*Node)).init(self.allocator);
             defer prev.deinit();
 
             // Initially, push all the nodes into the distances hashmap with a distance of infinity.
@@ -447,6 +440,11 @@ pub fn Graph(comptime T: type) type {
             while (pq.count() > 0) {
                 var current: Element = pq.remove();
 
+                // The last node: when pqcount reaches zero is the end of the MST.
+                if (pq.count() == 0) {
+                    dest = current.node;
+                }
+
                 if (!visited.contains(current.node)) {
                     var currentPtr: *Node = self.vertices.?.getValue(current.node).?;
                     var neighbors: std.ArrayList(*Edge) = self.graph.?.getValue(currentPtr).?;
@@ -457,10 +455,10 @@ pub fn Graph(comptime T: type) type {
                         // from current. Choose the edge, mark the distance map and fill the prev vector.
 
                         // Contains:
-                        var pqcontains: u1 = 0;
+                        var pqcontains: bool = false;
                         for (pq.items) |item, i| {
                             if (mem.eql(u8, item.node, n.node.name)) {
-                                pqcontains = 1;
+                                pqcontains = true;
                                 break;
                             }
                         }
@@ -469,18 +467,23 @@ pub fn Graph(comptime T: type) type {
                         // Distance between current vertex and this neighbor n
                         var n_dist = @intCast(i32, n.weight);
 
-                        if (pqcontains == 1 and n_dist < best_dist) {
+                        if (pqcontains == true and n_dist < best_dist) {
                             // We have found the edge that needs to be added to our MST, add it to path,
                             // set distance and prev. and update the priority queue with the new weight. (n_dist)
                             _ = try distances.put(n.node.name, n_dist);
 
-                            var prevArr = std.ArrayList(*Node).init(self.allocator);
+                            var prevArr: ?std.ArrayList(*Node) = null;
                             if (prev.contains(n.node.name) == true) {
-                                prevArr.deinit();
                                 prevArr = prev.getValue(n.node.name).?;
+                            } else {
+                                prevArr = std.ArrayList(*Node).init(self.allocator);
                             }
 
-                            try prevArr.append(currentPtr);
+                            try prevArr.?.append(currentPtr);
+                            // for (prevArr.?.items) |y| {
+                            //     warn("\r\n prev: {}", .{y});
+                            // }
+                            // warn("\r\n next\r\n", .{});
                             _ = try prev.put(n.node.name, prevArr);
                         
                             // Update the priority queue with the new edge weight.
@@ -497,30 +500,32 @@ pub fn Graph(comptime T: type) type {
                         }
                     }
                 }
-
-                if (pq.count() == 1) {
-                    // We need the last vertex which got added to the MST to path trace the results.
-                    dest = current.node;
-                }
                 
-                _ = try visited.put(current.node, 1);  
+                _ = try visited.put(current.node, true);  
             }
 
-            // Path tracing, to return the MST as a 
+            // Path tracing, to return the MST as an arraylist of arraylist.
             var x: []const u8 = dest;
+            var t = std.ArrayList(*Node).init(self.allocator);
+            try t.append(self.vertices.?.getValue(x).?);
+            try path.append(t);
+
             while(prev.contains(x)) {
-                var temp: std.ArrayList(*Node) = prev.getValue(x).?;
-                try path.append(temp);
-                x = temp.items[0].name;
+                var temp: ?std.ArrayList(*Node) = prev.getValue(x).?;
+                // for (temp.?.items) |k| {
+                //     warn("\r\n path: {}", .{k});
+                // }
+                try path.append(temp.?);
+                x = temp.?.items[0].name;
             }
 
             return path;
 
         }
 
-        // pub fn tarjan(self: *Self){
+        pub fn tarjan(self: *Self) !void{
 
-        // }
+        }
 
     };
 }
@@ -599,7 +604,7 @@ pub fn main() anyerror!void {
     try graph3.addEdge("B", 1, "C", 1, 2);
     try graph3.addEdge("C", 1, "D", 1, 5);
     try graph3.addEdge("D", 1, "E", 1, 4);
-    // try graph3.addEdge("B", 1, "E", 1, 1);
+    //try graph3.addEdge("B", 1, "E", 1, 1);
     graph3.print();
 
     warn("\r\n", .{});
@@ -608,7 +613,9 @@ pub fn main() anyerror!void {
     defer res4.deinit();
 
     for (res4.items) |n| {
-        warn("\r\n prim: {} ", .{n});
+        for (n.items) |x| {
+            warn("\r\n prim: {} ", .{x});
+        }
     }
     warn("\r\n", .{});
     
