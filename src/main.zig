@@ -149,7 +149,7 @@ pub fn Graph(comptime T: type) type {
                 if (entry.used == true) {
                     warn("\r\nConnections: {}  =>", .{entry.kv.key});
                     for (entry.kv.value.items) |v, i| {
-                        warn("  {}  =>", .{v.node.*});
+                        warn("  {}  =>", .{v.*});
                     }
                     warn("|| \r\n", .{});
                 }
@@ -312,7 +312,7 @@ pub fn Graph(comptime T: type) type {
         // }
 
         pub const Element = struct {
-            node: *Node,
+            node: []const u8,
             distance: i32,
         };
         pub fn minCompare(a: Element, b: Element) bool {
@@ -321,63 +321,74 @@ pub fn Graph(comptime T: type) type {
 
         pub fn dijiksta(self: *Self, src: []const u8, dst: []const u8) !std.ArrayList(Element) {
 
+            var result = std.ArrayList(Element).init(self.allocator);
+
+            if ( (self.vertices.?.contains(src) == false) or (self.vertices.?.contains(dst) == false) ){
+                return result;
+            }
+
+            var source: *Node = self.vertices.?.getValue(src).?;
+
             var pq = std.PriorityQueue(Element).init(self.allocator, minCompare);
             defer pq.deinit();
 
-            var source: *Node = self.vertices.?.getValue(src).?;
-            //var dest: *Node = self.vertices.?.getValue(dst).?;
+            var visited = std.StringHashMap(i32).init(self.allocator);
+            defer visited.deinit();
 
             var distances = std.StringHashMap(i32).init(self.allocator);
             defer distances.deinit();
 
-            var result = std.ArrayList(Element).init(self.allocator);
-
             // Initially, push all the nodes into the invisited hashmap with a distance of infinity (-1).
             for (self.vertices.?.entries) |entry| {
-                if (entry.used == true) {
-                    _ = try distances.put(entry.kv.key, -1);
+                if (entry.used == true and !mem.eql(u8, source.name, entry.kv.key)) {
+                    _ = try distances.put(entry.kv.key, 9999);
+                    try pq.add(Element{.node= entry.kv.key, .distance= 9999});
                 }
             }
 
             _ = try distances.put(src, 0);
-            try pq.add(.{.node= source, .distance= 0});
+            try pq.add(Element{.node= source.name, .distance= 0});
             
             while (pq.count() > 0) {
                 var current: Element = pq.remove();
-                if (distances.contains(current.node.name) == true ) {
-                    var neighbors: std.ArrayList(*Edge) = self.graph.?.getValue(current.node).?;
+
+                if (mem.eql(u8, current.node, dst)) {
+                    break;
+                }
+
+                if (!visited.contains(current.node)) {
+                    var nodePtr: *Node = self.vertices.?.getValue(current.node).?;
+                    var neighbors: std.ArrayList(*Edge) = self.graph.?.getValue(nodePtr).?;
 
                     for (neighbors.items) |n| {
                         // Update the distance values from all neighbors, to the current node
                         // and obtain the shortest distance to the current node from all of its neighbors.
-                        var best_dist = distances.getValue(current.node.name).?;
+                        var best_dist = distances.getValue(n.node.name).?;
                         var n_dist = @intCast(i32, current.distance + @intCast(i32, n.weight));
+
+                        // warn("\r\n n1 {} nbhr {} ndist {} best {}", .{current.node, n.node.name, n_dist, best_dist});
                         if (n_dist < best_dist) {
                             _ = try distances.put(n.node.name, n_dist);
-                        }
                         
-                        // Update distance in the priority queue -> decrease priority
-                        // warn("\r\n {}", .{pq.items});
-                        // for (pq.items) |item, i| {
-                        //     warn("\r\n to delete {} {}", .{n.node.name, pq.items});
-                        //     if (mem.eql(u8, item.node.name, n.node.name)) {
-                        //         var rem = pq.items[i+1..];
-                        //         pq.items = pq.items[0..i];
-                        //         mem.copy(Element,pq.items[i+1..], rem);
-                        //         self.allocator.destroy(item.node);
-                        //     }
-                        // }
-                        warn("\r\n {}", .{pq.items});
-                        try pq.add(.{.node= n.node, .distance= n_dist});
+                            // Update distance in the priority queue -> decrease priority
+                            var modIndex: usize = 0;
+                            for (pq.items) |item, i| {
+                                if (mem.eql(u8, item.node, n.node.name)) {
+                                    modIndex = i;
+                                    break;
+                                }
+                            }
+                            _ = pq.removeIndex(modIndex);
+                            try pq.add(Element{.node= n.node.name, .distance= n_dist});
+                        }
                     }
 
                     // After updating all the distances to all neighbors, get the 
                     // best leading edge from the closest neighbor to this node. Mark that
                     // distance as the best distance to this node, and add it to the results.
-                    var best = distances.getValue(current.node.name).?;
+                    var best = distances.getValue(current.node).?;
                     try result.append(Element{.node= current.node, .distance= best});
-                    distances.removeAssertDiscard(current.node.name);
-                
+                    _ = try visited.put(current.node, 1);                
                 }
 
             }
@@ -436,9 +447,20 @@ pub fn main() anyerror!void {
     }
     warn("\r\n", .{});
 
+
+    // Graph with no self loops for dijiksta.
+    var graph2 = Graph(i32).init(gallocator);
+    defer graph2.deinit();
+
+    try graph2.addEdge("A", 1, "B", 1, 1);
+    try graph2.addEdge("B", 1, "C", 1, 2);
+    try graph2.addEdge("C", 1, "D", 1, 5);
+    try graph2.addEdge("D", 1, "B", 1, 4);
+    graph2.print();
+
     warn("\r\n", .{});
     warn("\r\nDijikstra: ", .{});
-    var res3 = try graph.dijiksta("A", "B");
+    var res3 = try graph2.dijiksta("A", "D");
     defer res3.deinit();
 
     for (res3.items) |n| {
