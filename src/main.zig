@@ -307,10 +307,6 @@ pub fn Graph(comptime T: type) type {
 
         // }
 
-        // pub fn prim(self: *Self) !std.ArrayList(*Node) {
-
-        // }
-
         pub const Element = struct {
             node: []const u8,
             distance: i32,
@@ -321,10 +317,11 @@ pub fn Graph(comptime T: type) type {
 
         pub fn dijikstra(self: *Self, src: []const u8, dst: []const u8) !std.ArrayList(Element) {
 
-            var result = std.ArrayList(Element).init(self.allocator);
+            var result = std.StringHashMap(i32).init(self.allocator);
+            var path = std.ArrayList(Element).init(self.allocator);
 
             if ( (self.vertices.?.contains(src) == false) or (self.vertices.?.contains(dst) == false) ){
-                return result;
+                return path;
             }
 
             var source: *Node = self.vertices.?.getValue(src).?;
@@ -338,7 +335,10 @@ pub fn Graph(comptime T: type) type {
             var distances = std.StringHashMap(i32).init(self.allocator);
             defer distances.deinit();
 
-            // Initially, push all the nodes into the invisited hashmap with a distance of infinity (-1).
+            var prev = std.StringHashMap(*Node).init(self.allocator);
+            defer prev.deinit();
+
+            // Initially, push all the nodes into the distances hashmap with a distance of infinity.
             for (self.vertices.?.entries) |entry| {
                 if (entry.used == true and !mem.eql(u8, source.name, entry.kv.key)) {
                     _ = try distances.put(entry.kv.key, 9999);
@@ -357,8 +357,8 @@ pub fn Graph(comptime T: type) type {
                 }
 
                 if (!visited.contains(current.node)) {
-                    var nodePtr: *Node = self.vertices.?.getValue(current.node).?;
-                    var neighbors: std.ArrayList(*Edge) = self.graph.?.getValue(nodePtr).?;
+                    var currentPtr: *Node = self.vertices.?.getValue(current.node).?;
+                    var neighbors: std.ArrayList(*Edge) = self.graph.?.getValue(currentPtr).?;
 
                     for (neighbors.items) |n| {
                         // Update the distance values from all neighbors, to the current node
@@ -368,9 +368,13 @@ pub fn Graph(comptime T: type) type {
 
                         // warn("\r\n n1 {} nbhr {} ndist {} best {}", .{current.node, n.node.name, n_dist, best_dist});
                         if (n_dist < best_dist) {
+                            // Shortest way to reach current node is through this neighbor.
+                            // Update the node's distance from source, and add it to prev.
                             _ = try distances.put(n.node.name, n_dist);
+
+                            _ = try prev.put(n.node.name, currentPtr);
                         
-                            // Update distance in the priority queue -> decrease priority
+                            // Update the priority queue with the new, shorter distance.
                             var modIndex: usize = 0;
                             for (pq.items) |item, i| {
                                 if (mem.eql(u8, item.node, n.node.name)) {
@@ -387,13 +391,25 @@ pub fn Graph(comptime T: type) type {
                     // best leading edge from the closest neighbor to this node. Mark that
                     // distance as the best distance to this node, and add it to the results.
                     var best = distances.getValue(current.node).?;
-                    try result.append(Element{.node= current.node, .distance= best});
+                    _ = try result.put(current.node, best);
                     _ = try visited.put(current.node, 1);                
                 }
 
             }
 
-            return result;
+            // Path tracing, to return a list of nodes from src to dst.
+            var x: []const u8 = dst;
+            while(prev.contains(x)) {
+                var temp: *Node = prev.getValue(x).?;
+                try path.append(Element{.node= temp.name, .distance= result.getValue(temp.name).?});
+                x = temp.name;
+            }
+
+            return path;
+        }
+
+        pub fn prim(self: *Self) !std.ArrayList(*Node) {
+
         }
 
         // pub fn tarjan(self: *Self){
@@ -455,12 +471,13 @@ pub fn main() anyerror!void {
     try graph2.addEdge("A", 1, "B", 1, 1);
     try graph2.addEdge("B", 1, "C", 1, 2);
     try graph2.addEdge("C", 1, "D", 1, 5);
-    try graph2.addEdge("D", 1, "B", 1, 4);
+    try graph2.addEdge("D", 1, "E", 1, 4);
+    // try graph2.addEdge("B", 1, "E", 1, 1);
     graph2.print();
 
     warn("\r\n", .{});
     warn("\r\nDijikstra: ", .{});
-    var res3 = try graph2.dijikstra("A", "D");
+    var res3 = try graph2.dijikstra("A", "E");
     defer res3.deinit();
 
     for (res3.items) |n| {
