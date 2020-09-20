@@ -301,7 +301,7 @@ pub fn Graph(comptime T: type) type {
         // }
 
         pub const Element = struct {
-            node: []const u8,
+            name: []const u8,
             distance: i32,
         };
         pub fn minCompare(a: Element, b: Element) bool {
@@ -335,22 +335,22 @@ pub fn Graph(comptime T: type) type {
             for (self.vertices.?.entries) |entry| {
                 if (entry.used == true and !mem.eql(u8, source.name, entry.kv.key)) {
                     _ = try distances.put(entry.kv.key, 9999);
-                    try pq.add(Element{.node= entry.kv.key, .distance= 9999});
+                    try pq.add(Element{.name= entry.kv.key, .distance= 9999});
                 }
             }
 
             _ = try distances.put(src, 0);
-            try pq.add(Element{.node= source.name, .distance= 0});
+            try pq.add(Element{.name= source.name, .distance= 0});
             
             while (pq.count() > 0) {
                 var current: Element = pq.remove();
 
-                if (mem.eql(u8, current.node, dst)) {
+                if (mem.eql(u8, current.name, dst)) {
                     break;
                 }
 
-                if (!visited.contains(current.node)) {
-                    var currentPtr: *Node = self.vertices.?.getValue(current.node).?;
+                if (!visited.contains(current.name)) {
+                    var currentPtr: *Node = self.vertices.?.getValue(current.name).?;
                     var neighbors: std.ArrayList(*Edge) = self.graph.?.getValue(currentPtr).?;
 
                     for (neighbors.items) |n| {
@@ -370,22 +370,22 @@ pub fn Graph(comptime T: type) type {
                             // Update the priority queue with the new, shorter distance.
                             var modIndex: usize = 0;
                             for (pq.items) |item, i| {
-                                if (mem.eql(u8, item.node, n.node.name)) {
+                                if (mem.eql(u8, item.name, n.node.name)) {
                                     modIndex = i;
                                     break;
                                 }
                             }
                             _ = pq.removeIndex(modIndex);
-                            try pq.add(Element{.node= n.node.name, .distance= n_dist});
+                            try pq.add(Element{.name= n.node.name, .distance= n_dist});
                         }
                     }
 
                     // After updating all the distances to all neighbors, get the 
                     // best leading edge from the closest neighbor to this node. Mark that
                     // distance as the best distance to this node, and add it to the results.
-                    var best = distances.getValue(current.node).?;
-                    _ = try result.put(current.node, best);
-                    _ = try visited.put(current.node, 1);                
+                    var best = distances.getValue(current.name).?;
+                    _ = try result.put(current.name, best);
+                    _ = try visited.put(current.name, 1);                
                 }
 
             }
@@ -394,12 +394,17 @@ pub fn Graph(comptime T: type) type {
             var x: []const u8 = dst;
             while(prev.contains(x)) {
                 var temp: *Node = prev.getValue(x).?;
-                try path.append(Element{.node= temp.name, .distance= result.getValue(temp.name).?});
+                try path.append(Element{.name= temp.name, .distance= result.getValue(temp.name).?});
                 x = temp.name;
             }
 
             return path;
         }
+
+        pub const Pair = struct {
+            n1: []const u8,
+            n2: []const u8
+        };
 
         pub fn prim(self: *Self, src: []const u8) !std.ArrayList(std.ArrayList(*Node)) {
             // Start with a vertex, and pick the minimum weight edge that belongs to that
@@ -412,7 +417,8 @@ pub fn Graph(comptime T: type) type {
             }
 
             var source: *Node = self.vertices.?.getValue(src).?;
-            var dest: []const u8 = undefined;
+            var dest = std.ArrayList(Pair).init(self.allocator);
+            defer dest.deinit();
 
             var pq = std.PriorityQueue(Element).init(self.allocator, minCompare);
             defer pq.deinit();
@@ -430,23 +436,18 @@ pub fn Graph(comptime T: type) type {
             for (self.vertices.?.entries) |entry| {
                 if (entry.used == true and !mem.eql(u8, source.name, entry.kv.key)) {
                     _ = try distances.put(entry.kv.key, 9999);
-                    try pq.add(Element{.node= entry.kv.key, .distance= 9999});
+                    try pq.add(Element{.name= entry.kv.key, .distance= 9999});
                 }
             }
 
             _ = try distances.put(src, 0);
-            try pq.add(Element{.node= source.name, .distance= 0});
+            try pq.add(Element{.name= source.name, .distance= 0});
 
             while (pq.count() > 0) {
                 var current: Element = pq.remove();
 
-                // The last node: when pqcount reaches zero is the end of the MST.
-                if (pq.count() == 0) {
-                    dest = current.node;
-                }
-
-                if (!visited.contains(current.node)) {
-                    var currentPtr: *Node = self.vertices.?.getValue(current.node).?;
+                if (!visited.contains(current.name)) {
+                    var currentPtr: *Node = self.vertices.?.getValue(current.name).?;
                     var neighbors: std.ArrayList(*Edge) = self.graph.?.getValue(currentPtr).?;
 
                     for (neighbors.items) |n| {
@@ -457,7 +458,7 @@ pub fn Graph(comptime T: type) type {
                         // Contains:
                         var pqcontains: bool = false;
                         for (pq.items) |item, i| {
-                            if (mem.eql(u8, item.node, n.node.name)) {
+                            if (mem.eql(u8, item.name, n.node.name)) {
                                 pqcontains = true;
                                 break;
                             }
@@ -466,6 +467,8 @@ pub fn Graph(comptime T: type) type {
                         var best_dist = distances.getValue(n.node.name).?;
                         // Distance between current vertex and this neighbor n
                         var n_dist = @intCast(i32, n.weight);
+
+                        // warn("\r\n current {} nbhr {} ndist {} best {}", .{current.node, n.node.name, n_dist, best_dist});
 
                         if (pqcontains == true and n_dist < best_dist) {
                             // We have found the edge that needs to be added to our MST, add it to path,
@@ -489,34 +492,52 @@ pub fn Graph(comptime T: type) type {
                             // Update the priority queue with the new edge weight.
                             var modIndex: usize = 0;
                             for (pq.items) |item, i| {
-                                if (mem.eql(u8, item.node, n.node.name)) {
+                                if (mem.eql(u8, item.name, n.node.name)) {
                                     modIndex = i;
                                     break;
                                 }
                             }
                             _ = pq.removeIndex(modIndex);
-                            try pq.add(Element{.node= n.node.name, .distance= n_dist});
+                            try pq.add(Element{.name= n.node.name, .distance= n_dist});
 
                         }
+
+                        // Identify leaf nodes for path tracing
+                        
+                        // pull out the neighbors list for the current neighbor, and check length.
+                        var cPtr: *Node = self.vertices.?.getValue(n.node.name).?;
+                        var nbhr: std.ArrayList(*Edge) = self.graph.?.getValue(cPtr).?;
+
+                        if (nbhr.items.len == 0) {
+                            // warn("\r\n last node: {} {}", .{current.name, n.node.name});
+                            try dest.append(Pair{.n1= current.name, .n2= n.node.name});
+                        }
+
                     }
                 }
                 
-                _ = try visited.put(current.node, true);  
+                _ = try visited.put(current.name, true);  
             }
 
             // Path tracing, to return the MST as an arraylist of arraylist.
-            var x: []const u8 = dest;
-            var t = std.ArrayList(*Node).init(self.allocator);
-            try t.append(self.vertices.?.getValue(x).?);
-            try path.append(t);
+            for (dest.items) |item| {
+                var t0 = std.ArrayList(*Node).init(self.allocator);
+                try t0.append(self.vertices.?.getValue(item.n2).?);
+                try path.append(t0);
 
-            while(prev.contains(x)) {
-                var temp: ?std.ArrayList(*Node) = prev.getValue(x).?;
-                // for (temp.?.items) |k| {
-                //     warn("\r\n path: {}", .{k});
-                // }
-                try path.append(temp.?);
-                x = temp.?.items[0].name;
+                var dst = item.n1;
+                var t = std.ArrayList(*Node).init(self.allocator);
+                try t.append(self.vertices.?.getValue(dst).?);
+                try path.append(t);
+
+                while(prev.contains(dst)) {
+                    var temp: ?std.ArrayList(*Node) = prev.getValue(dst).?;
+                    // for (temp.?.items) |k| {
+                    //     warn("\r\n path: {}", .{k});
+                    // }
+                    try path.append(temp.?);
+                    dst = temp.?.items[0].name;
+                }
             }
 
             return path;
@@ -604,7 +625,7 @@ pub fn main() anyerror!void {
     try graph3.addEdge("B", 1, "C", 1, 2);
     try graph3.addEdge("C", 1, "D", 1, 5);
     try graph3.addEdge("D", 1, "E", 1, 4);
-    //try graph3.addEdge("B", 1, "E", 1, 1);
+    try graph3.addEdge("B", 1, "E", 1, 1);
     graph3.print();
 
     warn("\r\n", .{});
