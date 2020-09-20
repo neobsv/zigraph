@@ -408,7 +408,113 @@ pub fn Graph(comptime T: type) type {
             return path;
         }
 
-        pub fn prim(self: *Self) !std.ArrayList(*Node) {
+        pub fn prim(self: *Self, src: []const u8) !std.ArrayList(std.ArrayList(*Node)) {
+            // Start with a vertex, and pick the minimum weight edge that belongs to that
+            // vertex. Traverse the edge and then repeat the same procedure, till an entire
+            // spannning tree is formed.
+            var path = std.ArrayList(std.ArrayList(*Node)).init(self.allocator);
+
+            if (self.vertices.?.contains(src) == false) {
+                return path;
+            }
+
+            var source: *Node = self.vertices.?.getValue(src).?;
+            var dest: []const u8 = "undef";
+
+            var pq = std.PriorityQueue(Element).init(self.allocator, minCompare);
+            defer pq.deinit();
+
+            var visited = std.StringHashMap(i32).init(self.allocator);
+            defer visited.deinit();
+
+            var distances = std.StringHashMap(i32).init(self.allocator);
+            defer distances.deinit();
+
+            var prev = std.StringHashMap(std.ArrayList(*Node)).init(self.allocator);
+            defer prev.deinit();
+
+            // Initially, push all the nodes into the distances hashmap with a distance of infinity.
+            for (self.vertices.?.entries) |entry| {
+                if (entry.used == true and !mem.eql(u8, source.name, entry.kv.key)) {
+                    _ = try distances.put(entry.kv.key, 9999);
+                    try pq.add(Element{.node= entry.kv.key, .distance= 9999});
+                }
+            }
+
+            _ = try distances.put(src, 0);
+            try pq.add(Element{.node= source.name, .distance= 0});
+
+            while (pq.count() > 0) {
+                var current: Element = pq.remove();
+
+                if (!visited.contains(current.node)) {
+                    var currentPtr: *Node = self.vertices.?.getValue(current.node).?;
+                    var neighbors: std.ArrayList(*Edge) = self.graph.?.getValue(currentPtr).?;
+
+                    for (neighbors.items) |n| {
+                        // If the PQ contains this vertex (meaning, it hasn't been considered yet), then the
+                        // then check if the edge between the current and this neighbor is the min. spanning edge
+                        // from current. Choose the edge, mark the distance map and fill the prev vector.
+
+                        // Contains:
+                        var pqcontains: u1 = 0;
+                        for (pq.items) |item, i| {
+                            if (mem.eql(u8, item.node, n.node.name)) {
+                                pqcontains = 1;
+                                break;
+                            }
+                        }
+                        // Distance of current vertex with its neighbors (best_so_far)
+                        var best_dist = distances.getValue(n.node.name).?;
+                        // Distance between current vertex and this neighbor n
+                        var n_dist = @intCast(i32, n.weight);
+
+                        if (pqcontains == 1 and n_dist < best_dist) {
+                            // We have found the edge that needs to be added to our MST, add it to path,
+                            // set distance and prev. and update the priority queue with the new weight. (n_dist)
+                            _ = try distances.put(n.node.name, n_dist);
+
+                            var prevArr = std.ArrayList(*Node).init(self.allocator);
+                            if (prev.contains(n.node.name) == true) {
+                                prevArr.deinit();
+                                prevArr = prev.getValue(n.node.name).?;
+                            }
+
+                            try prevArr.append(currentPtr);
+                            _ = try prev.put(n.node.name, prevArr);
+                        
+                            // Update the priority queue with the new edge weight.
+                            var modIndex: usize = 0;
+                            for (pq.items) |item, i| {
+                                if (mem.eql(u8, item.node, n.node.name)) {
+                                    modIndex = i;
+                                    break;
+                                }
+                            }
+                            _ = pq.removeIndex(modIndex);
+                            try pq.add(Element{.node= n.node.name, .distance= n_dist});
+
+                        }
+                    }
+                }
+
+                if (pq.count() == 1) {
+                    // We need the last vertex which got added to the MST to path trace the results.
+                    dest = current.node;
+                }
+                
+                _ = try visited.put(current.node, 1);  
+            }
+
+            // Path tracing, to return the MST as a 
+            var x: []const u8 = dest;
+            while(prev.contains(x)) {
+                var temp: std.ArrayList(*Node) = prev.getValue(x).?;
+                try path.append(temp);
+                x = temp.items[0].name;
+            }
+
+            return path;
 
         }
 
@@ -482,6 +588,27 @@ pub fn main() anyerror!void {
 
     for (res3.items) |n| {
         warn("\r\n dijikstra: {} ", .{n});
+    }
+    warn("\r\n", .{});
+
+    // Graph for prim.
+    var graph3 = Graph(i32).init(gallocator);
+    defer graph3.deinit();
+
+    try graph3.addEdge("A", 1, "B", 1, 1);
+    try graph3.addEdge("B", 1, "C", 1, 2);
+    try graph3.addEdge("C", 1, "D", 1, 5);
+    try graph3.addEdge("D", 1, "E", 1, 4);
+    // try graph3.addEdge("B", 1, "E", 1, 1);
+    graph3.print();
+
+    warn("\r\n", .{});
+    warn("\r\nPrim: ", .{});
+    var res4 = try graph3.prim("A");
+    defer res4.deinit();
+
+    for (res4.items) |n| {
+        warn("\r\n prim: {} ", .{n});
     }
     warn("\r\n", .{});
     
