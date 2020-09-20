@@ -521,14 +521,22 @@ pub fn Graph(comptime T: type) type {
 
             // Path tracing, to return the MST as an arraylist of arraylist.
             for (dest.items) |item| {
+                var spacer = try self.allocator.create(Node);
+                errdefer self.allocator.destroy(spacer);
+                spacer.* = Node.init("spacer", 1);
+
                 var t0 = std.ArrayList(*Node).init(self.allocator);
-                try t0.append(self.vertices.?.getValue(item.n2).?);
+                try t0.append(spacer);
                 try path.append(t0);
 
+                var t1 = std.ArrayList(*Node).init(self.allocator);
+                try t1.append(self.vertices.?.getValue(item.n2).?);
+                try path.append(t1);
+
                 var dst = item.n1;
-                var t = std.ArrayList(*Node).init(self.allocator);
-                try t.append(self.vertices.?.getValue(dst).?);
-                try path.append(t);
+                var t2 = std.ArrayList(*Node).init(self.allocator);
+                try t2.append(self.vertices.?.getValue(dst).?);
+                try path.append(t2);
 
                 while(prev.contains(dst)) {
                     var temp: ?std.ArrayList(*Node) = prev.getValue(dst).?;
