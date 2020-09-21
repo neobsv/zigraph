@@ -13,7 +13,7 @@ This is an implementation of common graph algorithms in Zig,
 ## Minimum Spanning Tree
 
 - Prim
-- Kruskal
+- Kruskal (TODO)
 
 ## Shortest Path
 
@@ -21,4 +21,4 @@ This is an implementation of common graph algorithms in Zig,
 
 ## Connected Components
 
-- SCC Finding
+- Tarjan

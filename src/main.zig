@@ -302,7 +302,7 @@ pub fn Graph(comptime T: type) type {
 
         pub const Element = struct {
             name: []const u8,
-            distance: i32,
+            distance: i32
         };
         pub fn minCompare(a: Element, b: Element) bool {
             return a.distance < b.distance;
@@ -552,7 +552,134 @@ pub fn Graph(comptime T: type) type {
 
         }
 
-        pub fn tarjan(self: *Self) !void{
+        fn arrayContains(arr: std.ArrayList(*Node), node: *Node) bool {
+            for (arr.items) | item | {
+                if (mem.eql(u8, item.name, node.name)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        fn min(a: i32, b: i32) i32 {
+            if (a < b) {
+                return a;
+            }
+            return b;
+        }
+
+        fn tarjanDriver (self: *Self,
+                        node: *Node, 
+                        globalIndexCounter: *i32, 
+                        index: *std.StringHashMap(i32), 
+                        low: *std.StringHashMap(i32), 
+                        stack: *std.ArrayList(*Node),
+                        result: *std.ArrayList(std.ArrayList(*Node))
+        ) !void {
+            // Set the indices for the current recursion, increment the global index, mark the index
+            // for the node, mark low, and append the node to the recursion stack.
+            _ = try index.put(node.name, globalIndexCounter.*);
+            _ = try low.put(node.name, globalIndexCounter.*);
+            try stack.append(node);
+            globalIndexCounter.* = globalIndexCounter.* + 1;
+
+            // Get the neighbors of the current node.
+            var current: *Node = self.vertices.?.getValue(node.name).?;
+            var neighbors: std.ArrayList(*Edge) = self.graph.?.getValue(current).?;
+
+            warn("\r\n begin iteration for node: {}\r\n", .{current});
+            for (neighbors.items) |n| {
+
+                if (low.contains(n.node.name) == false) {
+                    self.tarjanDriver(n.node, globalIndexCounter, index, low, stack, result) catch unreachable;
+                    
+                    // Update the low index after the recursion, set low index to the min of
+                    // prev and current recursive calls.
+                    var prevLow: i32 = low.getValue(current.name).?;
+                    var currLow: i32 = low.getValue(n.node.name).?;
+
+                    _ = try low.put(current.name, min(prevLow, currLow));
+
+                } else if (arrayContains(stack.*, n.node)) {
+
+                    // Update the low index after the recursion, set low index to the min of
+                    // prev and current recursive calls.
+                    var prevLow: i32 = low.getValue(current.name).?;
+                    // IMP: notice that 'index' is being used here, not low.
+                    var currIndex: i32 = index.getValue(n.node.name).?;
+
+                    _ = try low.put(current.name, min(prevLow, currIndex));
+                    
+                }
+
+            }
+            
+            for(low.entries) |entry|{
+                if (entry.used) {
+                    warn("\r\n  low entry:   {}", .{entry});
+                }
+            }
+
+            warn("\r\n end iteration for node: {}", .{current});
+
+            var lnode: i32 = low.getValue(current.name).?;
+            var inode: i32 = index.getValue(current.name).?;
+
+            warn("\r\n current {} lnode {} cnode {}", .{current, lnode, inode});
+
+            if (lnode == inode) {
+                
+                var scc = std.ArrayList(*Node).init(self.allocator);
+
+                while (true) {
+
+                    for (stack.items) |k| {
+                        warn("\r\n   stack: {}", .{k});
+                    }
+
+                    var successor: *Node = stack.pop();
+                    try scc.append(successor);
+                    if ( mem.eql(u8, successor.name, current.name) ) {
+                        break;
+                    }
+                }
+
+                try result.append(scc);
+            }
+
+        }
+
+        pub fn tarjan(self: *Self) !std.ArrayList(std.ArrayList(*Node)) {
+            // Tarjan uses dfs in order to traverse a graph, and return all the strongly connected components in it. 
+            // The algorithm uses two markers called index and low. Index marks the order in which the node has been visited. The
+            // count of nodes from the start vertex. The other marker, low, marks the lowest index value
+            // seen by the algorithm so far. Once the recursion unwraps, the key of this algorithm
+            // is to compare the current stack 'low' (c1) with the previous stack 'low' (c0) 
+            // while it collapses the stacks. If c1 < c0, then the low for the previous node is updated
+            // to low[prev] = c1, if c1 > c0 then we have found a min-cut edge for the graph. These edges
+            // separate the strongly connected components from each other.
+            var result = std.ArrayList(std.ArrayList(*Node)).init(self.allocator);
+
+            var globalIndexCounter: i32 = 0;
+
+            var stack = std.ArrayList(*Node).init(self.allocator);
+            defer stack.deinit();
+
+            var index = std.StringHashMap(i32).init(self.allocator);
+            defer index.deinit();
+
+            var low = std.StringHashMap(i32).init(self.allocator);
+            defer low.deinit();
+
+            for (self.vertices.?.entries) |entry| {
+                if (entry.used == true) {
+                    if (low.contains(entry.kv.value.name) == false) {
+                        self.tarjanDriver(entry.kv.value, &globalIndexCounter, &index, &low, &stack, &result) catch unreachable;
+                    }
+                }
+            }
+
+            return result;
 
         }
 
@@ -570,6 +697,7 @@ pub fn main() anyerror!void {
     try graph.addEdge("B", 20, "C", 40, 2);
     try graph.addEdge("C", 110, "A", 10, 3);
     try graph.addEdge("A", 10, "A", 10, 0);
+    try graph.addEdge("J", 1, "K", 1, 1);
     graph.print();
 
     warn("\r\nTopoSort: ", .{});
@@ -615,6 +743,9 @@ pub fn main() anyerror!void {
     // try graph2.addEdge("B", 1, "E", 1, 1);
     graph2.print();
 
+    _ = try graph2.topoSort();
+    warn("\r\nConnected components: {}", .{graph2.connected});
+
     warn("\r\n", .{});
     warn("\r\nDijikstra: ", .{});
     var res3 = try graph2.dijikstra("A", "E");
@@ -636,6 +767,9 @@ pub fn main() anyerror!void {
     try graph3.addEdge("B", 1, "E", 1, 1);
     graph3.print();
 
+    _ = try graph3.topoSort();
+    warn("\r\nConnected components: {}", .{graph3.connected});
+
     warn("\r\n", .{});
     warn("\r\nPrim: ", .{});
     var res4 = try graph3.prim("A");
@@ -645,6 +779,36 @@ pub fn main() anyerror!void {
         for (n.items) |x| {
             warn("\r\n prim: {} ", .{x});
         }
+    }
+    warn("\r\n", .{});
+
+    // Graph for tarjan.
+    var graph4 = Graph(i32).init(gallocator);
+    defer graph4.deinit();
+
+    try graph4.addEdge("A", 1, "B", 1, 1);
+    try graph4.addEdge("B", 1, "C", 1, 2);
+    try graph4.addEdge("C", 1, "D", 1, 5);
+    try graph4.addEdge("D", 1, "E", 1, 4);
+    try graph4.addEdge("B", 1, "E", 1, 1);
+    try graph4.addEdge("J", 1, "K", 1, 1);
+    try graph4.addEdge("M", 1, "N", 1, 1);
+    graph4.print();
+
+    _ = try graph4.topoSort();
+    warn("\r\nConnected components: {}", .{graph4.connected});
+
+    warn("\r\n", .{});
+    warn("\r\nTarjan: ", .{});
+    var res5 = try graph4.tarjan();
+    defer res5.deinit();
+
+    for (res5.items) |n| {
+        warn("\r\n begin component:", .{});
+        for (n.items) |x| {
+            warn("\r\n    tarjan: {} ", .{x});
+        }
+        warn("\r\n end component.", .{});
     }
     warn("\r\n", .{});
     
