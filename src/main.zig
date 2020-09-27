@@ -42,9 +42,9 @@ pub fn Graph(comptime T: type) type {
             return Self{
                 .N = 0,
                 .connected = 0,
-                .root = null,
-                .vertices = null,
-                .graph = null,
+                .root = undefined,
+                .vertices = undefined,
+                .graph = undefined,
                 .allocator = alloc
             };
         }
@@ -72,7 +72,7 @@ pub fn Graph(comptime T: type) type {
         }
 
         pub fn addVertex(self: *Self, n: []const u8, d: T) !void {
-            if (self.root == null) {
+            if (self.N == 0) {
                 var rt = try self.allocator.create(Node);
                 errdefer self.allocator.destroy(rt);
                 rt.* = Node.init(n, d);
@@ -101,11 +101,11 @@ pub fn Graph(comptime T: type) type {
         }
 
         pub fn addEdge(self: *Self, n1: []const u8, d1: T, n2: []const u8, d2: T, w: u32) !void {
-            if (self.vertices == null or self.vertices.?.contains(n1) == false ) {
+            if (self.N == 0 or self.vertices.?.contains(n1) == false ) {
                 try self.addVertex(n1, d1);
             }
 
-            if (self.vertices.?.contains(n2) == false){
+            if (self.vertices.?.contains(n2) == false) {
                 try self.addVertex(n2, d2);
             }
 
@@ -219,6 +219,8 @@ pub fn Graph(comptime T: type) type {
                     }
                 }
             }
+
+            self.connected -= 1;
 
             for (stack.items) |n| {
                 try result.append(n);
@@ -475,7 +477,7 @@ pub fn Graph(comptime T: type) type {
                             // set distance and prev. and update the priority queue with the new weight. (n_dist)
                             _ = try distances.put(n.node.name, n_dist);
 
-                            var prevArr: ?std.ArrayList(*Node) = null;
+                            var prevArr: ?std.ArrayList(*Node) = undefined;
                             if (prev.contains(n.node.name) == true) {
                                 prevArr = prev.getValue(n.node.name).?;
                             } else {
@@ -569,7 +571,7 @@ pub fn Graph(comptime T: type) type {
         }
 
         fn tarjanDriver (self: *Self,
-                        node: *Node, 
+                        current: *Node, 
                         globalIndexCounter: *i32, 
                         index: *std.StringHashMap(i32), 
                         low: *std.StringHashMap(i32), 
@@ -578,73 +580,71 @@ pub fn Graph(comptime T: type) type {
         ) !void {
             // Set the indices for the current recursion, increment the global index, mark the index
             // for the node, mark low, and append the node to the recursion stack.
-            _ = try index.put(node.name, globalIndexCounter.*);
-            _ = try low.put(node.name, globalIndexCounter.*);
-            try stack.append(node);
-            globalIndexCounter.* = globalIndexCounter.* + 1;
+            _ = try index.put(current.name, globalIndexCounter.*);
+            _ = try low.put(current.name, globalIndexCounter.*);
+            try stack.append(current);
+            globalIndexCounter.* += 1;
 
             // Get the neighbors of the current node.
-            var current: *Node = self.vertices.?.getValue(node.name).?;
             var neighbors: std.ArrayList(*Edge) = self.graph.?.getValue(current).?;
 
-            warn("\r\n begin iteration for node: {}\r\n", .{current});
+            // warn("\r\n begin iteration for node: {}\r\n", .{current});
             for (neighbors.items) |n| {
 
-                if (low.contains(n.node.name) == false) {
+                if (index.contains(n.node.name) == false) {
                     self.tarjanDriver(n.node, globalIndexCounter, index, low, stack, result) catch unreachable;
                     
                     // Update the low index after the recursion, set low index to the min of
                     // prev and current recursive calls.
-                    var prevLow: i32 = low.getValue(current.name).?;
-                    var currLow: i32 = low.getValue(n.node.name).?;
+                    var currLow: i32 = low.getValue(current.name).?;
+                    var nLow: i32 = low.getValue(n.node.name).?;
 
-                    _ = try low.put(current.name, min(prevLow, currLow));
+                    _ = try low.put(current.name, min(currLow, nLow));
 
-                } else if (arrayContains(stack.*, n.node)) {
+                } else if (arrayContains(stack.*, current)) {
 
                     // Update the low index after the recursion, set low index to the min of
                     // prev and current recursive calls.
-                    var prevLow: i32 = low.getValue(current.name).?;
+                    var currLow: i32 = low.getValue(current.name).?;
                     // IMP: notice that 'index' is being used here, not low.
-                    var currIndex: i32 = index.getValue(n.node.name).?;
+                    var nIndex: i32 = index.getValue(n.node.name).?;
 
-                    _ = try low.put(current.name, min(prevLow, currIndex));
+                    _ = try low.put(current.name, min(currLow, nIndex));
                     
                 }
 
             }
             
-            for(low.entries) |entry|{
-                if (entry.used) {
-                    warn("\r\n  low entry:   {}", .{entry});
-                }
-            }
+            // for(low.entries) |entry|{
+            //     if (entry.used) {
+            //         warn("\r\n  low entry:   {}", .{entry});
+            //     }
+            // }
+            // warn("\r\n end iteration for node: {}", .{current});
 
-            warn("\r\n end iteration for node: {}", .{current});
+            var currentLow: i32 = low.getValue(current.name).?;
+            var currentIndex: i32 = index.getValue(current.name).?;
 
-            var lnode: i32 = low.getValue(current.name).?;
-            var inode: i32 = index.getValue(current.name).?;
+            // warn("\r\n current {} index {} low {}", .{current, currentIndex, currentLow});
 
-            warn("\r\n current {} lnode {} cnode {}", .{current, lnode, inode});
-
-            if (lnode == inode) {
+            if (currentLow == currentIndex) {
                 
                 var scc = std.ArrayList(*Node).init(self.allocator);
 
                 while (true) {
 
-                    for (stack.items) |k| {
-                        warn("\r\n   stack: {}", .{k});
-                    }
+                    // for (stack.items) |k| {
+                    //     warn("\r\n   stack: {}", .{k});
+                    // }
 
                     var successor: *Node = stack.pop();
                     try scc.append(successor);
                     if ( mem.eql(u8, successor.name, current.name) ) {
+                        try result.append(scc);
                         break;
                     }
                 }
-
-                try result.append(scc);
+                
             }
 
         }
@@ -673,7 +673,7 @@ pub fn Graph(comptime T: type) type {
 
             for (self.vertices.?.entries) |entry| {
                 if (entry.used == true) {
-                    if (low.contains(entry.kv.value.name) == false) {
+                    if (index.contains(entry.kv.value.name) == false) {
                         self.tarjanDriver(entry.kv.value, &globalIndexCounter, &index, &low, &stack, &result) catch unreachable;
                     }
                 }
@@ -686,10 +686,21 @@ pub fn Graph(comptime T: type) type {
     };
 }
 
+test "basic graph insertion and printing" {
+    var graph = Graph(i32).init(gallocator);
+    defer graph.deinit();
 
+    try graph.addEdge("A", 10, "B", 20, 1);
+    try graph.addEdge("B", 20, "C", 40, 2);
+    try graph.addEdge("C", 110, "A", 10, 3);
+    try graph.addEdge("A", 10, "A", 10, 0);
+    try graph.addEdge("J", 1, "K", 1, 1);
+    graph.print();
+    warn("\r\n", .{});
+    warn("\r\n", .{});
+}
 
-pub fn main() anyerror!void {
-
+test "basic graph toposort" {
     var graph = Graph(i32).init(gallocator);
     defer graph.deinit();
 
@@ -710,6 +721,21 @@ pub fn main() anyerror!void {
     warn("\r\n", .{});
 
     warn("\r\nConnected components: {}", .{graph.connected});
+    warn("\r\n", .{});
+    warn("\r\n", .{});
+
+}
+
+test "basic graph bfs" {
+    var graph = Graph(i32).init(gallocator);
+    defer graph.deinit();
+
+    try graph.addEdge("A", 10, "B", 20, 1);
+    try graph.addEdge("B", 20, "C", 40, 2);
+    try graph.addEdge("C", 110, "A", 10, 3);
+    try graph.addEdge("A", 10, "A", 10, 0);
+    try graph.addEdge("J", 1, "K", 1, 1);
+    graph.print();
 
     warn("\r\n", .{});
     warn("\r\nBFS: ", .{});
@@ -720,18 +746,35 @@ pub fn main() anyerror!void {
         warn("\r\n bfs result: {} ", .{n});
     }
     warn("\r\n", .{});
+    warn("\r\n", .{});
+
+}
+
+test "basic graph dfs" {
+    var graph = Graph(i32).init(gallocator);
+    defer graph.deinit();
+
+    try graph.addEdge("A", 10, "B", 20, 1);
+    try graph.addEdge("B", 20, "C", 40, 2);
+    try graph.addEdge("C", 110, "A", 10, 3);
+    try graph.addEdge("A", 10, "A", 10, 0);
+    try graph.addEdge("J", 1, "K", 1, 1);
+    graph.print();
 
     warn("\r\n", .{});
-    warn("\r\nDFS: ", .{});
-    var res2 = try graph.dfs();
-    defer res2.deinit();
+    warn("\r\nBFS: ", .{});
+    var res1 = try graph.dfs();
+    defer res1.deinit();
 
-    for (res2.items) |n| {
+    for (res1.items) |n| {
         warn("\r\n dfs result: {} ", .{n});
     }
     warn("\r\n", .{});
+    warn("\r\n", .{});
 
+}
 
+test "basic graph dijikstra" {
     // Graph with no self loops for dijiksta.
     var graph2 = Graph(i32).init(gallocator);
     defer graph2.deinit();
@@ -755,7 +798,11 @@ pub fn main() anyerror!void {
         warn("\r\n dijikstra: {} ", .{n});
     }
     warn("\r\n", .{});
+    warn("\r\n", .{});
 
+}
+
+test "basic graph prim" {
     // Graph for prim.
     var graph3 = Graph(i32).init(gallocator);
     defer graph3.deinit();
@@ -781,13 +828,18 @@ pub fn main() anyerror!void {
         }
     }
     warn("\r\n", .{});
+    warn("\r\n", .{});
+}
 
+test "basic graph tarjan" {
     // Graph for tarjan.
     var graph4 = Graph(i32).init(gallocator);
     defer graph4.deinit();
 
     try graph4.addEdge("A", 1, "B", 1, 1);
+    try graph4.addEdge("B", 1, "A", 1, 1);
     try graph4.addEdge("B", 1, "C", 1, 2);
+    try graph4.addEdge("C", 1, "B", 1, 1);
     try graph4.addEdge("C", 1, "D", 1, 5);
     try graph4.addEdge("D", 1, "E", 1, 4);
     try graph4.addEdge("B", 1, "E", 1, 1);
@@ -811,5 +863,5 @@ pub fn main() anyerror!void {
         warn("\r\n end component.", .{});
     }
     warn("\r\n", .{});
-    
+    warn("\r\n", .{});
 }
