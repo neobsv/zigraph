@@ -1,0 +1,16 @@
+language : shell
+
+env:
+  - VAR=1
+
+os:
+  - osx
+
+before_install:
+  - /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)"
+
+install:
+  - brew install zig
+
+script: 
+  - zig test src/main.zig
