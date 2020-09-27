@@ -6,8 +6,10 @@ env:
 os:
   - osx
 
-before_install:
-  - /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)"
+addons:
+  homebrew:
+    packages:
+    - beanstalk
 
 install:
   - brew install zig
