@@ -1,6 +1,6 @@
 # Zigraph
 
-[![Travis](https://travis-ci.org/onebsv1/zigraph.svg?branch=master)]
+![Travis](https://travis-ci.org/onebsv1/zigraph.svg?branch=master)
 
 ## Introduction
 

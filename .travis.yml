@@ -1,8 +1,5 @@
 language : shell
 
-env:
-  - VAR=1
-
 os:
   - osx
   - linux
