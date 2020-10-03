@@ -6,7 +6,9 @@ os:
 
 addons:
   snaps:
-  - zig
+  - name: zig
+    classic: true
+    channel: beta
   homebrew:
     update: true
     packages:
