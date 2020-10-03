@@ -1,5 +1,7 @@
 # Zigraph
 
+[![Travis](https://travis-ci.org/onebsv1/zigraph.svg?branch=master)]
+
 ## Introduction
 
 This is an implementation of common graph algorithms in Zig,
