@@ -5,14 +5,16 @@ env:
 
 os:
   - osx
+  - linux
 
 addons:
+  apt:
+    packages:
+    - zig
   homebrew:
     packages:
-    - beanstalk
+    - zig
 
-install:
-  - brew install zig
 
 script: 
   - zig test src/main.zig
