@@ -5,10 +5,10 @@ os:
   - linux
 
 addons:
-  apt:
-    packages:
-    - zig
+  snaps:
+  - zig
   homebrew:
+    update: true
     packages:
     - zig
 
